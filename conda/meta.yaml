@@ -1,0 +1,48 @@
+# conda recipe (conda-build / rattler-build, e.g. for bioconda):
+#   conda build conda/
+{% set version = "0.1.0.dev0" %}
+
+package:
+  name: cnvscope
+  version: {{ version }}
+
+source:
+  path: ..
+
+build:
+  noarch: python
+  number: 0
+  script: {{ PYTHON }} -m pip install . --no-deps --no-build-isolation -vv
+  entry_points:
+    - cnvscope = cnvscope.cli:main
+
+requirements:
+  host:
+    - python >=3.10
+    - pip
+    - hatchling
+    - nodejs >=20
+  run:
+    - python >=3.10
+    - anndata >=0.10
+    - h5py >=3.8
+    - numpy >=1.24
+    - pandas >=2.0
+    - scipy >=1.10
+    - fastapi >=0.110
+    - uvicorn >=0.27
+    - click >=8.1
+  run_constrained:
+    # R is optional: only needed to read ASCAT.sc .rds / .Rda result objects
+    - r-base >=4.2
+
+test:
+  imports:
+    - cnvscope
+  commands:
+    - cnvscope --help
+    - cnvscope tools
+
+about:
+  summary: Interactive viewer for single-cell copy-number calls (scDNA, scRNA, scATAC)
+  license: MIT
