@@ -11,6 +11,7 @@ from click.testing import CliRunner
 
 from cnvscope.cli import main
 from cnvscope.readers import detect, load
+from cnvscope.readers.scphasedcn import _categorical_strings
 
 CELLS = ["c1", "c2", "c3"]
 REGIONS = pd.DataFrame(
@@ -221,3 +222,9 @@ def test_extract_alone_is_explained(tmp_path):
     extract(tmp_path / "S1")
     with pytest.raises(ValueError, match="extract/ holds only the read counts"):
         load(tmp_path / "S1", "scphasedcn")
+
+
+def test_categorical_strings_preserves_missing_values():
+    c = _categorical_strings(pd.Series([1, None, "x", pd.NA]))
+    assert c[0] == "1" and c[2] == "x"
+    assert pd.isna(c[1]) and pd.isna(c[3])

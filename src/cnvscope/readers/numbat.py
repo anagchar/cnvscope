@@ -51,6 +51,13 @@ MAX_BINS = 8000
 MIN_P = 0.9
 
 
+def _categorical_strings(s: pd.Series) -> pd.Categorical:
+    """Categorical strings without pandas' nullable-string dtype (for h5ad compatibility)."""
+    vals = s.astype(object)
+    vals = vals.where(vals.isna(), vals.astype(str))
+    return pd.Categorical(vals)
+
+
 def _final(d: Path) -> int | None:
     its = []
     for p in d.glob("clone_post_*.tsv"):
@@ -204,9 +211,9 @@ def read_numbat(
 
     obs = pd.DataFrame(index=cells)
     if "clone_opt" in cp:
-        obs["clone"] = pd.Categorical(cp["clone_opt"].astype("string"))
+        obs["clone"] = _categorical_strings(cp["clone_opt"])
     if "compartment_opt" in cp:
-        obs["compartment"] = pd.Categorical(cp["compartment_opt"].astype("string"))
+        obs["compartment"] = _categorical_strings(cp["compartment_opt"])
     for src, dst in (("p_cnv", "p_cnv_cell"), ("p_opt", "p_opt")):
         if src in cp:
             obs[dst] = pd.to_numeric(cp[src], errors="coerce").to_numpy()
