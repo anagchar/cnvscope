@@ -25,11 +25,18 @@ export function metricRanges(vals: Record<string, ArrayLike<number>>): Record<st
 }
 
 /** The ASCAT.sc Explorer's default thresholds, for the metrics this dataset has. */
-export function defaultFilters(vals: Record<string, ArrayLike<number>>): Filters {
+/**
+ * Tools whose calls are already calibrated per cell (scphasedcn thresholds them on null cells):
+ * many altered bins is their signal, not noise, so "Bins with CNA" gets no default filter.
+ */
+const CALIBRATED_CALLS = new Set(["scphasedcn"]);
+
+export function defaultFilters(vals: Record<string, ArrayLike<number>>, tool = ""): Filters {
   const ranges = metricRanges(vals);
   const out: Filters = {};
   for (const t of THRESH) {
     if (!ranges[t.metric]) continue;
+    if (t.metric === "bins_with_cna" && CALIBRATED_CALLS.has(tool)) continue;
     const v = Array.from(vals[t.metric]).filter(Number.isFinite).sort((a, b) => a - b);
     const x = t.initial(v);
     // skip a default that cannot flag any cell (at or beyond the data's own end)

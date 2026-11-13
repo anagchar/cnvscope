@@ -44,7 +44,7 @@ export function FiltersPanel() {
         <button className="iconbtn" onClick={() => set({ filtersOpen: false })} aria-label="Close the filters panel">✕</button>
       </div>
       <div className="fpanel-bar">
-        <button className="iconbtn" onClick={() => set({ filters: defaultFilters(vals) })}>Defaults</button>
+        <button className="iconbtn" onClick={() => set({ filters: defaultFilters(vals, meta.tool) })}>Defaults</button>
         <button className="iconbtn" disabled={!active.length} onClick={() => set({ filters: {} })}>Clear all</button>
         <button className="iconbtn" onClick={() => downloadText(cellsTable(meta, vals, filters, d), `${safe}_cells_qc.tsv`)} title="Every cell with pass/fail, failed filters and all metrics (TSV)"><DlIcon />Cells</button>
       </div>

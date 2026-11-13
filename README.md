@@ -9,10 +9,10 @@ The `cnvscope` command (below) reads the tools' outputs and writes those `.h5ad`
 
 | Modality | Tools (planned order) |
 |---|---|
-| scDNA | ASCAT.sc, HiScanner, CHISEL → later SCOPE, Ginkgo, … |
+| scDNA | ASCAT.sc, HiScanner, CHISEL, scphasedcn (long-read, phased) → later SCOPE, Ginkgo, … |
 | scATAC | epiAneufinder → later Alleloscope, CopyscAT |
-| scRNA | Numbat, InferCNV, CopyKAT (later) |
-| Multiome | paired RNA + ATAC calls per barcode (later) |
+| scRNA | Numbat → later InferCNV, CopyKAT |
+| Multiome | Numbat-multiome (binned RNA + ATAC counts) → later paired per-modality calls |
 
 Each tool's output is read into one canonical model (an AnnData object: cells × genomic bins,
 one layer per value track) that records what each value *means* — integer copy number,
@@ -39,7 +39,7 @@ Everything the ASCAT.sc Explorer does, on the multi-tool model:
   widths, print theme, title, font size, dendrogram / ideogram / annotation / legend, whole genome
   or the zoomed region), as 300/600 dpi PNG or PDF
 
-Readers (checked on real outputs): ASCAT.sc result objects (`.rds`/`.Rda`, via R) and web exports, HiScanner (`final_calls/`), CHISEL (`calls/calls.tsv` + `clones/mapping.tsv`). scATAC: epiAneufinder (`epiAneufinder_results/results_table.tsv`; checked on tables written by its own R code, not yet on a real run).
+Readers (checked on real outputs): ASCAT.sc result objects (`.rds`/`.Rda`, via R) and web exports, HiScanner (`final_calls/`), CHISEL (`calls/calls.tsv` + `clones/mapping.tsv`). scphasedcn (a caller folder, or a sample folder holding `caller/` and `extract/`; checked on runs of its own simulator, not yet on real SPLONGGET data). scATAC: epiAneufinder (`epiAneufinder_results/results_table.tsv`; checked on tables written by its own R code, not yet on a real run).
 
 ## Install
 
@@ -70,16 +70,37 @@ cnvscope --mode dna --tool ascatsc --input-file /path/to/results.rds --outdir re
 
 | `--mode` | `--tool` |
 |---|---|
-| `dna` | `ascatsc` (folder with the `.rds`/`.Rda` result or `ascat_data.json`), `hiscanner`, `chisel` |
-| `rna` | `numbat`, `infercnv`, `copykat` (planned) |
+| `dna` | `ascatsc` (folder with the `.rds`/`.Rda` result or `ascat_data.json`), `hiscanner`, `chisel`, `scphasedcn` (the caller folder, or the sample folder holding `caller/`) |
+| `rna` | `numbat` (its `out_dir`, or the folder holding `numbat_out/`); `infercnv`, `copykat` (planned) |
 | `atac` | `epianeufinder` (the run's output folder, holding `epiAneufinder_results/`) |
-| `multiome` | paired RNA + ATAC (planned) |
+| `multiome` | `numbat` (a Numbat-multiome run, on genomic bins) |
 
 It writes to `--outdir`, then opens the viewer:
 
 - `<name>.h5ad`: the dataset; open it again in seconds with `cnvscope serve results/<name>.h5ad`
 - `<name>_cells.tsv`: one row per cell with its annotations (clone, cluster, cell type) and QC metrics
 - `<name>_run.json`: what was run, on what, when, and what was written
+
+Numbat: read at the final iteration (`clone_post_N`, `segs_consensus_N`, `geno_N`). Each cell
+gets `p_cnv`, the probability of the most likely CNV segment over every bin (Numbat's `geno`),
+and the segment's state as allele copies where that probability is at least 0.9 (del 1:0,
+amp 2:1, loh 2:0, bamp 2:2, bdel 0:0; relative states, not absolute copy numbers), so it opens on
+the allele-specific view. Bin-level runs (Numbat-multiome, "genes" named `chr1:0-1042457`) use
+those bins and add the smoothed expression (`gexp_roll_wide`) as `logr`. Cells are ordered by
+Ward clustering of `p_cnv`, the matrix Numbat builds its phylogeny from; clone and tumour /
+normal compartment are cell columns. A folder with several runs (e.g. `1MB/`, `220KB/`) is
+refused with their names: point `--input` at one.
+
+```bash
+cnvscope --mode multiome --numbat --input Numbat-multiome/1MB --outdir results/
+```
+
+scphasedcn: normal mode paints each cell's reportable calls (arm, chromosome, 5-50 Mb tiles,
+events) on 1 Mb windows over the neutral state, as allele-specific copy number (loss 1:0, gain
+2:1, CN-LOH 2:0, ...; a male's X is haploid); tumour mode paints each assigned cell with its
+clone's segments. With the extraction folder beside it (`extract/`, or the `dir` in the run
+notes), per-cell read counts and the haplotype-A fraction are added. Its calls are calibrated
+on null cells, so the viewer sets no default "Bins with CNA" filter for it.
 
 Cell annotations (cell types from RNA, ArchR clusters, samples, ...) are joined with
 `--annotations cells.csv` (or `.tsv`): a barcode column (`cell`, `barcode`, or the first

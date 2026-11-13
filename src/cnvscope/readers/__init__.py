@@ -64,4 +64,13 @@ def load(path: str | Path, tool: str | None = None, **opts) -> CNVDataset:
 
 
 # Import reader modules so they register themselves.
-from . import ascatsc_json, ascatsc_r, chisel, demo, epianeufinder, hiscanner  # noqa: E402,F401
+from . import (  # noqa: E402,F401
+    ascatsc_json,
+    ascatsc_r,
+    chisel,
+    demo,
+    epianeufinder,
+    hiscanner,
+    numbat,
+    scphasedcn,
+)

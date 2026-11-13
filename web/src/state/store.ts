@@ -60,6 +60,9 @@ interface State {
 const initialPalette = (): PaletteName => "signals";
 const initialTheme = (): Theme => (document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 
+/** Tools whose states are relative to the cell's baseline, not absolute copy numbers. */
+const RELATIVE_STATES = new Set(["Numbat"]);
+
 /** Layers the heatmap needs for a view. */
 export function layersFor(view: string): string[] {
   return view === ALLELE ? ["major_cn", "minor_cn"] : [view];
@@ -125,14 +128,17 @@ export const useStore = create<State>((set, get) => ({
   },
 
   setMeta: (meta) => {
-    // a new dataset: every view setting goes back to its default
+    // a new dataset: every view setting goes back to its default. Numbat's states are relative
+    // (a CN-LOH has total 2, like neutral), so it opens on the allele-specific view.
+    const names = new Set(meta.layers.map((l) => l.name));
+    const startView = RELATIVE_STATES.has(meta.tool) && names.has("major_cn") && names.has("minor_cn") ? ALLELE : meta.default_layer;
     set({
       meta,
       picking: false,
       error: null,
       matrices: {},
       loading: {},
-      view: meta.default_layer,
+      view: startView,
       selected: null,
       zoom: null,
       tab: "cn",
@@ -144,7 +150,7 @@ export const useStore = create<State>((set, get) => ({
       filters: null,
       annotation: null,
     });
-    get().ensureLayer(meta.default_layer);
+    for (const l of new Set([meta.default_layer, ...layersFor(startView)])) get().ensureLayer(l);
   },
 
   ensureLayer: async (name) => {

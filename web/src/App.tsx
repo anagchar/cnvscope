@@ -37,9 +37,10 @@ function Explorer({ meta }: { meta: Meta }) {
   // defaults for a new dataset: QC filters from the cells' own distribution
   useEffect(() => {
     const st = useStore.getState();
-    if (st.filters == null) st.set({ filters: defaultFilters(d.vals) });
-    // a cell-type column (e.g. from --annotations) is shown as the heatmap's track
-    if (st.annotation == null && meta.obs_kinds.cell_type === "categorical") st.set({ annotation: "cell_type" });
+    if (st.filters == null) st.set({ filters: defaultFilters(d.vals, meta.tool) });
+    // the heatmap's track: the tool's clones, else a cell-type column (e.g. from --annotations)
+    const track = ["clone", "cell_type"].find((k) => meta.obs_kinds[k] === "categorical");
+    if (st.annotation == null && track) st.set({ annotation: track });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta]);
   useEffect(() => {

@@ -62,7 +62,9 @@ def test_helpful_errors(tmp_path):
     d = str(tmp_path)
     r = CliRunner().invoke(main, ["--mode", "rna", "--tool", "chisel", "--input", d, "--outdir", d])
     assert r.exit_code != 0 and "CHISEL is a scDNA tool" in r.output and "numbat" in r.output
-    r = CliRunner().invoke(main, ["--mode", "rna", "--tool", "numbat", "--input", d, "--outdir", d])
+    r = CliRunner().invoke(
+        main, ["--mode", "rna", "--tool", "infercnv", "--input", d, "--outdir", d]
+    )
     assert "not supported yet" in r.output
     r = CliRunner().invoke(main, ["--mode", "dna", "--tool", "chisel", "--input", d])
     assert "missing --outdir" in r.output

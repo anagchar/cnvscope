@@ -35,13 +35,20 @@ class Tool:
     #: reader names that can read it; empty = not supported yet
     readers: tuple[str, ...]
     aliases: tuple[str, ...] = ()
+    #: other --mode values it serves (Numbat: binned RNA + ATAC multiome runs)
+    also: tuple[str, ...] = ()
+
+    @property
+    def modes(self) -> tuple[str, ...]:
+        return (self.mode, *self.also)
 
 
 TOOLS = [
     Tool("ascatsc", "ASCAT.sc", "dna", ("ascatsc_json", "ascatsc_r"), ("ascat.sc", "ascat")),
     Tool("hiscanner", "HiScanner", "dna", ("hiscanner",)),
     Tool("chisel", "CHISEL", "dna", ("chisel",)),
-    Tool("numbat", "Numbat", "rna", ()),
+    Tool("scphasedcn", "scphasedcn", "dna", ("scphasedcn",)),
+    Tool("numbat", "Numbat", "rna", ("numbat",), also=("multiome",)),
     Tool("infercnv", "InferCNV", "rna", ()),
     Tool("copykat", "CopyKAT", "rna", ()),
     Tool("epianeufinder", "epiAneufinder", "atac", ("epianeufinder",), ("epianeu",)),
@@ -59,6 +66,16 @@ def resolve_tool(name: str) -> Tool:
 
 def find_input(tool: Tool, path: Path) -> Path:
     """The file or folder the tool's reader takes, from what the user gave as --input."""
+    if tool.name == "numbat" and path.is_dir():
+        from .readers.numbat import runs_under
+
+        runs = runs_under(path)
+        if len(runs) > 1:
+            names = ", ".join(str(r.relative_to(path)) for r in runs)
+            raise click.UsageError(
+                f"{path} holds several Numbat runs: {names}. Point --input at one of them."
+            )
+        return runs[0] if runs else path
     if tool.name != "ascatsc" or path.is_file():
         return path
     # an ASCAT.sc results folder: prefer the viewer file export_cnvscope() writes, then a web
@@ -298,6 +315,7 @@ def main(
       cnvscope --mode dna --ascatsc --input ascatsc_results/ --outdir results/
       cnvscope --mode atac --epianeufinder --input epi_out/ --annotations cells.csv \\
                --outdir results/
+      cnvscope --mode multiome --numbat --input numbat_run/ --outdir results/
 
     \b
     Open the outputs again later:
@@ -333,16 +351,11 @@ def main(
     if len(tools) > 1:
         raise click.UsageError(f"choose one tool, got {', '.join(sorted(tools))}")
     tool = resolve_tool(chosen[0])
-    if mode == "multiome":
+    if mode not in tool.modes:
+        fits = ", ".join(t.name for t in TOOLS if mode in t.modes) or "none yet"
         raise click.UsageError(
-            "multiome (paired RNA + ATAC) is not supported yet; "
-            "run --mode rna and --mode atac on each part for now."
-        )
-    if tool.mode != mode:
-        fits = ", ".join(t.name for t in TOOLS if t.mode == mode)
-        raise click.UsageError(
-            f"{tool.label} is a {MODES[tool.mode]} tool, not {MODES[mode]}. "
-            f"Tools for --mode {mode}: {fits}."
+            f"{tool.label} is a {' / '.join(MODES[m] for m in tool.modes)} tool, not "
+            f"{MODES[mode]}. Tools for --mode {mode}: {fits}."
         )
     if not tool.readers:
         ready = ", ".join(t.name for t in TOOLS if t.readers)
@@ -362,6 +375,8 @@ def main(
         )
         if reader is not None and reader.name == "ascatsc_r":
             opts["use_viewer_file"] = not force  # --force: read the R object itself
+        if reader is not None and reader.name == "numbat":
+            opts["modality"] = MODES[mode]
     if reader is None:
         raise click.UsageError(
             f"{src} does not look like {tool.label} output. "
@@ -429,7 +444,7 @@ def tools() -> None:
     """List the tools and which ones can be read now."""
     for t in TOOLS:
         state = "ready" if t.readers else "planned"
-        click.echo(f"  --mode {t.mode:9} --tool {t.name:14} {t.label:14} {state}")
+        click.echo(f"  --mode {'/'.join(t.modes):14} --tool {t.name:14} {t.label:14} {state}")
 
 
 @main.command()

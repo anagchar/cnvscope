@@ -559,7 +559,7 @@ export function QCTab({ children }: { children: ReactNode }) {
           <span className="sub">{nPass.toLocaleString()} of {meta.n_cells.toLocaleString()} cells pass · drag a handle, switch Min / Max on, double-click a histogram to open it large</span>
           <span className="qc-key"><span><i style={{ background: "var(--qc-pass)" }} />passes</span><span><i style={{ background: "var(--qc-fail)" }} />flagged by this filter</span><span><i style={{ background: "var(--qc-other)" }} />flagged by another</span></span>
           <div className="fbar">
-            <button className="iconbtn" onClick={() => set({ filters: defaultFilters(vals) })} title="The ASCAT.sc Explorer's defaults: median + 2 MAD for the residual and MAPD, percentiles for coverage, CNA bins and Gini">Defaults</button>
+            <button className="iconbtn" onClick={() => set({ filters: defaultFilters(vals, meta.tool) })} title="The ASCAT.sc Explorer's defaults: median + 2 MAD for the residual and MAPD, percentiles for coverage, CNA bins and Gini">Defaults</button>
             <button className="iconbtn" disabled={!nActive} onClick={() => set({ filters: {} })}>Clear all</button>
             <button className="iconbtn" onClick={() => downloadText(cellsTable(meta, vals, filters, d), `${(meta.name || "cnvscope").replace(/[^\w.-]+/g, "_")}_cells_qc.tsv`)} title="Every cell with pass/fail, the failed filters and all metrics (TSV)"><DlIcon />Download cells</button>
           </div>
