@@ -11,6 +11,7 @@ from click.testing import CliRunner
 
 from cnvscope.cli import main
 from cnvscope.readers import detect, load
+from cnvscope.readers.numbat import _categorical_strings
 
 CELLS = ["AAAC", "GGTT", "TTAG", "CCGA"]
 # 1 Mb bins on chr1 (0-5 Mb) and chr2 (0-3 Mb), as Numbat-multiome names them
@@ -128,3 +129,9 @@ def test_cli_several_runs(tmp_path):
         "--mode", "multiome", "--numbat", "-i", str(tmp_path / "all"), "-o", str(tmp_path / "o")
     )
     assert r.exit_code != 0 and "several Numbat runs" in r.output and "220KB" in r.output
+
+
+def test_categorical_strings_preserves_missing_values():
+    c = _categorical_strings(pd.Series([1, None, "x", pd.NA]))
+    assert c[0] == "1" and c[2] == "x"
+    assert pd.isna(c[1]) and pd.isna(c[3])

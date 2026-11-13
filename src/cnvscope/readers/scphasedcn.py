@@ -47,6 +47,13 @@ HAPLOID = {"neutral": (1, 0), "loss": (0, 0), "del": (0, 0), "gain": (2, 0), "am
 CLASS_ORDER = {"chrom": 0, "arm": 1, "50Mb": 2, "20Mb": 3, "10Mb": 4, "5Mb": 5, "event": 6}
 
 
+def _categorical_strings(s: pd.Series) -> pd.Categorical:
+    """Categorical strings without pandas' nullable-string dtype (for h5ad compatibility)."""
+    vals = s.astype(object)
+    vals = vals.where(vals.isna(), vals.astype(str))
+    return pd.Categorical(vals)
+
+
 def _caller_dir(path: Path) -> Path | None:
     for d in (path, path / "caller"):
         if d.is_dir() and all((d / f).is_file() for f in CALLER_FILES):
@@ -191,7 +198,7 @@ def read_scphasedcn(path: Path, genome: str = "hg38") -> CNVDataset:
     obs = obs.loc[:, obs.notna().any()]  # columns the run left empty
     for c in obs.columns:
         if obs[c].dtype == object:
-            obs[c] = pd.Categorical(obs[c].astype("string"))
+            obs[c] = _categorical_strings(obs[c])
     return CNVDataset.build(
         cells=obs,
         bins=bins,
