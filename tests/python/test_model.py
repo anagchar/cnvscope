@@ -70,6 +70,15 @@ def test_h5ad_round_trip(tmp_path):
     assert "major_cn_lower" not in back.track_layers
 
 
+def test_h5ad_write_with_nullable_string_obs(tmp_path):
+    cells = pd.DataFrame({"clone": ["A", "B"]}, index=["a", "b"]).astype({"clone": "string"})
+    ds = tiny(cells=cells)
+    p = tmp_path / "nullable_strings.h5ad"
+    ds.write(p)
+    back = load(p)
+    assert back.adata.obs["clone"].tolist() == ["A", "B"]
+
+
 def test_scipy_to_hclust_leaves_and_merges():
     # three leaves: (0,1) at h=1, then (2, merge0) at h=2
     Z = np.array([[0, 1, 1.0, 2], [2, 3, 2.0, 3]])
