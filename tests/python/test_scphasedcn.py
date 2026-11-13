@@ -10,6 +10,7 @@ from click.testing import CliRunner
 
 from cnvscope.cli import main
 from cnvscope.readers import detect, load
+from cnvscope.readers.scphasedcn import _categorical_strings
 
 CELLS = ["c1", "c2", "c3"]
 REGIONS = pd.DataFrame(
@@ -168,3 +169,9 @@ def test_cli_run(tmp_path):
     assert r.exit_code == 0, r.output
     a = ad.read_h5ad(tmp_path / "o" / "t.h5ad")
     assert a.uns["tool"] == "scphasedcn" and set(a.layers.keys()) >= {"total_cn", "major_cn"}
+
+
+def test_categorical_strings_preserves_missing_values():
+    c = _categorical_strings(pd.Series([1, None, "x", pd.NA]))
+    assert c[0] == "1" and c[2] == "x"
+    assert pd.isna(c[1]) and pd.isna(c[3])
