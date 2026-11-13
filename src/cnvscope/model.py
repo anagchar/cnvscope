@@ -224,6 +224,14 @@ class CNVDataset:
 
     # ---------- I/O ----------
     def write(self, path: str | Path) -> None:
+        if hasattr(ad.settings, "allow_write_nullable_strings"):
+            prev = ad.settings.allow_write_nullable_strings
+            ad.settings.allow_write_nullable_strings = True
+            try:
+                self.adata.write_h5ad(path, compression="gzip")
+            finally:
+                ad.settings.allow_write_nullable_strings = prev
+            return
         self.adata.write_h5ad(path, compression="gzip")
 
     @classmethod
