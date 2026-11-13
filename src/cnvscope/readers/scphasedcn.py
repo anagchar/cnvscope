@@ -21,6 +21,10 @@ of the phased molecules, a BAF) summed to the same windows.
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +35,7 @@ from . import Reader, register
 
 WINDOW = 1_000_000
 CALLER_FILES = ("cells.tsv", "calls.tsv", "thresholds.tsv")
+SCRIPT = Path(__file__).parents[1] / "R" / "export_scphasedcn.R"
 #: normal-mode state -> (nA, nB) on a diploid chromosome (caller_states(), cn_grid())
 STATES = {
     "neutral": (1, 1),
@@ -55,10 +60,26 @@ def _caller_dir(path: Path) -> Path | None:
     return None
 
 
+def _result_rds(path: Path) -> Path | None:
+    """The call_scn() result object: `path` itself, or <sample>_call_scn.rds beside / in the
+    sample folder (the run's tables were never written with write_scphasedcn())."""
+    if path.is_file():
+        return path if path.suffix.lower() == ".rds" else None
+    for f in (
+        path.parent / f"{path.name}_call_scn.rds",
+        *sorted(path.glob("*_call_scn.rds")),
+        path / "result.rds",
+    ):
+        if f.is_file():
+            return f
+    return None
+
+
 def _detect(path: Path) -> bool:
     d = _caller_dir(path)
     if d is None:
-        return False
+        # a result object (R): recognised by its name, or taken when --scphasedcn names the tool
+        return _result_rds(path) is not None
     with open(d / "calls.tsv") as f:
         head = f.readline().rstrip("\n").split("\t")
     return {"cell", "region", "class", "state", "level"} <= set(head)
@@ -77,8 +98,8 @@ def _notes(d: Path) -> dict[str, str]:
     return out
 
 
-def _extract_dir(caller: Path, notes: dict[str, str]) -> Path | None:
-    cands = []
+def _extract_dir(caller: Path, notes: dict[str, str], near: list[Path] = ()) -> Path | None:
+    cands = list(near)
     if "dir" in notes:
         p = Path(notes["dir"])
         cands += [p] if p.is_absolute() else [caller.parent / p, caller.parent.parent / p]
@@ -112,10 +133,41 @@ def _paint(seg: pd.DataFrame, bins: pd.DataFrame, A: np.ndarray, B: np.ndarray, 
         A[row, m], B[row, m] = a, b
 
 
-def read_scphasedcn(path: Path, genome: str = "hg38") -> CNVDataset:
+def read_scphasedcn(path: Path, genome: str = "hg38", rscript: str | None = None) -> CNVDataset:
     d = _caller_dir(path)
-    if d is None:
-        raise ValueError(f"no scphasedcn caller folder (cells.tsv, calls.tsv, ...) in {path}")
+    if d is not None:
+        return _read_caller(d, genome)
+    rds = _result_rds(path)
+    if rds is None:
+        raise ValueError(
+            f"no scphasedcn results in {path}: neither the tables write_scphasedcn() writes "
+            "(cells.tsv, calls.tsv, ...) nor the call_scn() result object (<sample>_call_scn.rds). "
+            "extract/ holds only the read counts; the calls come from call_scn()."
+        )
+    return read_scphasedcn_rds(rds, genome, rscript)
+
+
+def read_scphasedcn_rds(rds: Path, genome: str = "hg38", rscript: str | None = None) -> CNVDataset:
+    """A call_scn() result object saved with saveRDS(): its tables are written by R
+    (R/export_scphasedcn.R: data.table, or write_scphasedcn() when scphasedcn is installed)."""
+    exe = rscript or shutil.which("Rscript")
+    if not exe:
+        raise RuntimeError(f"reading {rds.name} needs R (Rscript with data.table on the PATH)")
+    print(f"cnvscope: reading {rds.name} with R ...", file=sys.stderr)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "caller"
+        r = subprocess.run([exe, str(SCRIPT), str(rds), str(out)], capture_output=True, text=True)
+        if r.returncode != 0 or not (out / "cells.tsv").is_file():
+            tail = "\n".join((r.stderr or r.stdout).strip().splitlines()[-12:])
+            raise RuntimeError(f"R could not export {rds.name}:\n{tail}")
+        sample = re.sub(r"(_call_scn)?\.rds$", "", rds.name, flags=re.I)
+        near = [rds.parent / sample / "extract", rds.parent / "extract", rds.parent / sample]
+        return _read_caller(out, genome, near=near, source=sample)
+
+
+def _read_caller(
+    d: Path, genome: str = "hg38", near: list[Path] = (), source: str | None = None
+) -> CNVDataset:
     notes = _notes(d)
     cells_t = pd.read_csv(d / "cells.tsv", sep="\t", dtype={"cell": str}).set_index("cell")
     cells = cells_t.index.astype(str).tolist()
@@ -124,7 +176,7 @@ def read_scphasedcn(path: Path, genome: str = "hg38") -> CNVDataset:
     sex = notes.get("sex")
 
     # the genome: chromosome extents from the scored regions (or the extraction's bins)
-    ext = _extract_dir(d, notes)
+    ext = _extract_dir(d, notes, list(near))
     reg = pd.read_csv(d / "regions.tsv", sep="\t") if (d / "regions.tsv").is_file() else None
     chroms: dict[str, int] = {}
     if reg is not None and len(reg):
@@ -202,7 +254,7 @@ def read_scphasedcn(path: Path, genome: str = "hg38") -> CNVDataset:
         genome=genome,
         default_layer="total_cn",
         extra_uns={
-            "source": (d.parent.name if d.name == "caller" else d.name),
+            "source": source or (d.parent.name if d.name == "caller" else d.name),
             "scphasedcn_mode": mode,
             "sex": sex or "",
             "window_bp": WINDOW,

@@ -5,6 +5,7 @@ from pathlib import Path
 import anndata as ad
 import numpy as np
 import pandas as pd
+import pytest
 import scipy.sparse as sp
 from click.testing import CliRunner
 
@@ -82,7 +83,7 @@ def tumour_run(root: Path) -> Path:
 def extract(root: Path) -> None:
     """bins_100kb.h5ad: 100 kb bins, sparse counts and haplotype votes."""
     d = root / "extract"
-    d.mkdir()
+    d.mkdir(parents=True)
     var = pd.concat(
         pd.DataFrame({"chrom": c, "start": np.arange(0, n, 1e5), "end": np.arange(1e5, n + 1, 1e5)})
         for c, n in (("chr1", 6e6), ("chr2", 4e6), ("chrX", 3e6))
@@ -168,3 +169,55 @@ def test_cli_run(tmp_path):
     assert r.exit_code == 0, r.output
     a = ad.read_h5ad(tmp_path / "o" / "t.h5ad")
     assert a.uns["tool"] == "scphasedcn" and set(a.layers.keys()) >= {"total_cn", "major_cn"}
+
+
+def _r_with_data_table() -> bool:
+    import shutil
+    import subprocess
+
+    exe = shutil.which("Rscript")
+    if not exe:
+        return False
+    r = subprocess.run([exe, "-e", "library(data.table)"], capture_output=True)
+    return r.returncode == 0
+
+
+@pytest.mark.skipif(not _r_with_data_table(), reason="needs R with data.table")
+def test_result_object_is_read_through_r(tmp_path):
+    """<sample>_call_scn.rds (call_scn() saved with saveRDS) beside <sample>/extract."""
+    import subprocess
+
+    src = normal_run(tmp_path / "tables")
+    d = src / "caller"
+    root = tmp_path / "scphasedcn"
+    (root / "S1").mkdir(parents=True)
+    extract(root / "S1")
+    rds = root / "S1_call_scn.rds"
+    subprocess.run(
+        [
+            "Rscript",
+            "-e",
+            "library(data.table); a <- commandArgs(TRUE); d <- a[1]; "
+            "x <- list(mode = 'normal', cells = fread(file.path(d, 'cells.tsv')), "
+            "calls = fread(file.path(d, 'calls.tsv')), "
+            "regions = fread(file.path(d, 'regions.tsv')), "
+            "thresholds = data.table(), run = list(inputs = c('dir: /not/here', 'sex: female'))); "
+            "class(x) <- 'scphasedcn'; saveRDS(x, a[2])",
+            str(d),
+            str(rds),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    for p in (rds, root / "S1"):  # the object itself, or the sample folder beside it
+        ds = load(p, "scphasedcn")
+        T = ds.layer("total_cn")
+        assert T[0, win(ds, "chr1", 1)] == 1 and T[0, win(ds, "chr1", 4)] == 3
+        assert (ds.layer("read_counts") == 10).all()  # S1/extract found beside the object
+        assert ds.adata.uns["source"] == "S1"
+
+
+def test_extract_alone_is_explained(tmp_path):
+    extract(tmp_path / "S1")
+    with pytest.raises(ValueError, match="extract/ holds only the read counts"):
+        load(tmp_path / "S1", "scphasedcn")

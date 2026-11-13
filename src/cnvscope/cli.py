@@ -382,7 +382,7 @@ def main(
             f"{src} does not look like {tool.label} output. "
             "Point --input at the tool's output folder."
         )
-    name = name or (named_by or src).resolve().name.split(".")[0]
+    name = name or (named_by or src).resolve().name.split(".")[0].removesuffix("_call_scn")
     fp = fingerprint(src)
     cached = None if force else cached_result(outdir, name, tool.name, src, fp)
     if cached is not None:

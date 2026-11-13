@@ -70,7 +70,7 @@ cnvscope --mode dna --tool ascatsc --input-file /path/to/results.rds --outdir re
 
 | `--mode` | `--tool` |
 |---|---|
-| `dna` | `ascatsc` (folder with the `.rds`/`.Rda` result or `ascat_data.json`), `hiscanner`, `chisel`, `scphasedcn` (the caller folder, or the sample folder holding `caller/`) |
+| `dna` | `ascatsc` (folder with the `.rds`/`.Rda` result or `ascat_data.json`), `hiscanner`, `chisel`, `scphasedcn` (the caller folder, the sample folder, or the `call_scn()` result object `<sample>_call_scn.rds`) |
 | `rna` | `numbat` (its `out_dir`, or the folder holding `numbat_out/`); `infercnv`, `copykat` (planned) |
 | `atac` | `epianeufinder` (the run's output folder, holding `epiAneufinder_results/`) |
 | `multiome` | `numbat` (a Numbat-multiome run, on genomic bins) |
@@ -101,6 +101,14 @@ events) on 1 Mb windows over the neutral state, as allele-specific copy number (
 clone's segments. With the extraction folder beside it (`extract/`, or the `dir` in the run
 notes), per-cell read counts and the haplotype-A fraction are added. Its calls are calibrated
 on null cells, so the viewer sets no default "Bins with CNA" filter for it.
+When a run kept only the result object (`saveRDS(call_scn(...))`, no `write_scphasedcn()`),
+point `--input-file` at the `.rds`, or `--input` at the sample folder with the `.rds` beside
+it: R (with data.table; scphasedcn itself is not needed) writes its tables first, and
+`<sample>/extract/` beside it is found for the read counts.
+
+```bash
+cnvscope --mode dna --scphasedcn --input-file scphasedcn/COLO829BL_call_scn.rds --outdir results/
+```
 
 Cell annotations (cell types from RNA, ArchR clusters, samples, ...) are joined with
 `--annotations cells.csv` (or `.tsv`): a barcode column (`cell`, `barcode`, or the first
