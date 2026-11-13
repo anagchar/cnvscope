@@ -159,6 +159,12 @@ def test_extraction_adds_read_counts_and_haplotype_fraction(tmp_path):
     assert (R == 10).all()  # ten 100 kb bins per 1 Mb window, cells matched by name
     np.testing.assert_allclose(ds.layer("hap_a_frac"), 0.75)
     assert ds.semantics["hap_a_frac"].value == "baf"
+    # logR: depth equal to the reference everywhere -> the expected copies against the cell's mean
+    L = ds.layer("logr")
+    assert ds.semantics["logr"].value == "continuous_ratio"
+    np.testing.assert_allclose(L[2], 0, atol=1e-6)  # c3: no calls, mean 2, depth as expected
+    psi = np.nanmean(ds.layer("total_cn")[0])
+    np.testing.assert_allclose(L[0], np.log2(2 / psi), atol=1e-6)  # c1: same depth, calls
 
 
 def test_cli_run(tmp_path):

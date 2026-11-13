@@ -15,7 +15,9 @@ tumour mode paints each assigned cell with its clone's segments (unassigned cell
 
 When the extraction folder is found (``extract/`` beside the caller folder, or the ``dir`` in
 the run notes), its 100 kb bins add ``read_counts`` and ``hap_a_frac`` (haplotype-A fraction
-of the phased molecules, a BAF) summed to the same windows.
+of the phased molecules, a BAF) summed to the same windows, and ``logr``: each window's depth
+against the null cells (normal mode) or the reference pool (tumour mode), relative to the
+cell's mean copy number, as the other tools' logR.
 """
 
 from __future__ import annotations
@@ -245,6 +247,10 @@ def _read_caller(
         extra = _depth(ext, cells, bins)
         layers |= extra
         sem |= {k: (Semantics.COUNT if k == "read_counts" else Semantics.BAF) for k in extra}
+        ref = _reference_cells(cells_t, tumour)
+        base = np.where(hap, 1.0, 2.0)
+        layers["logr"] = _logr(extra["read_counts"], ref, base, layers["total_cn"])
+        sem["logr"] = Semantics.CONTINUOUS_RATIO
 
     obs = cells_t.copy()
     obs = obs.loc[:, obs.notna().any()]  # columns the run left empty
@@ -268,6 +274,48 @@ def _read_caller(
             "extraction": str(ext) if ext else "",
         },
     )
+
+
+#: windows whose reference depth is below this share of the median window (centromeres, gaps,
+#: blacklisted regions) get no logR
+MIN_REF = 0.2
+
+
+def _reference_cells(cells_t: pd.DataFrame, tumour: bool) -> np.ndarray:
+    """The cells whose depth is the normal reference: scphasedcn's null cells (normal mode), its
+    reference pool or normal clone N0 (tumour mode); all cells when fewer than 10 are marked."""
+
+    def flag(col: str) -> np.ndarray:
+        if col not in cells_t:
+            return np.zeros(len(cells_t), dtype=bool)
+        return cells_t[col].astype(str).str.upper().isin(["TRUE", "1"]).to_numpy()
+
+    if tumour:
+        ref = flag("ref_pool")
+        if ref.sum() < 10 and "clone" in cells_t:
+            ref = cells_t["clone"].astype(str).eq("N0").to_numpy()
+    else:
+        ref = flag("null_cell")
+        if "qc" in cells_t:
+            ref = ref & flag("qc")
+    return ref if ref.sum() >= 10 else np.ones(len(cells_t), dtype=bool)
+
+
+def _logr(R: np.ndarray, ref: np.ndarray, base: np.ndarray, total: np.ndarray) -> np.ndarray:
+    """Per-bin logR of each cell, as the other tools give it: the cell's share of reads in a
+    window over the reference cells' median share there (which removes GC / mappability),
+    times the window's normal copy number (2; 1 on a male's X / Y), against the cell's mean
+    called copy number."""
+    with np.errstate(invalid="ignore", divide="ignore"):
+        tot = np.nansum(R, axis=1, keepdims=True)
+        f = np.where(tot > 0, R / tot, np.nan)
+        rmed = np.nanmedian(f[ref], axis=0)
+        good = np.isfinite(rmed) & (rmed > MIN_REF * np.nanmedian(rmed))
+        cn = np.where(good[None, :], base[None, :] * f / rmed[None, :], np.nan)
+        fin = np.isfinite(total)
+        psi = np.where(fin, total, 0).sum(axis=1) / np.maximum(fin.sum(axis=1), 1)
+        psi = np.where(fin.any(axis=1), psi, 2.0)[:, None]
+        return np.where(np.isfinite(cn), np.log2(np.maximum(cn, 0.05) / psi), np.nan)
 
 
 def _depth(ext: Path, cells: list[str], bins: pd.DataFrame) -> dict[str, np.ndarray]:
